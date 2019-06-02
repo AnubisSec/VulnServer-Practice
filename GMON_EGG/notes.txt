@@ -1,0 +1,21 @@
+[+] Crash for GMON is unstable, need to restart guest if getting a crash > 5012 bytes
+
+[+] 5012 is the number of bytes for SEH override
+
+[+] seh offset found at 3454
+
+[+] next SEH pointer offset found at 3450, 4 bytes apart just as it should be
+
+[+] Confirming by placing "B" and "C" characters into buffer to see if they occupy the SEH address spaces
+
+[+] Confirmed, SE Handler overwritten with "C", and nextSeh address overwriten with "B"
+
+[+] Checking for bad chars, looks like \x00 is the only bad char (NOTE: If \x00 if is present, it doesn't even crash the application).
+
+[+] setting variable "seh" to the first return of the module: !mona seh; which locates the available pop pop ret instructions within our program
+
+[+] setting variable "nextSeh" to "\x90\x90\x06\xeb"; which will move along the stack 6 bytes from where EIP would be, in which the compiler will take "EB" and execute a short jmp of 6 bytes, which will get us past EIP into the land of where our shellcode will be; and then the last two bytes are just padding to make a total of 4 bytes.
+
+[+] Used the mona module "!mona egg -t DEAD" to create an egghunter shellcode that will go before the main payload. This is to deal with the very limited attack surface we have to work with.
+
+
