@@ -1,0 +1,34 @@
+1. All the normal stuff, find jmp esp, bad chars, etc
+2. Jump to the top of the A buffer, pretty trivial
+3. Here is the context of the recv() function for this:
+
+    - The first argument (on the top of the stack) is the socket file descriptor; in this, case the value 0x58.
+    
+    - The second argument is the buffer, i.e. a pointer to the area of memory that the data received via the socket will be stored. In this case, it will store the received data at 0x002e3560
+    
+    - The third argument is the amount of data to expect. This has been set at 0x1000 bytes (4096 bytes)
+    
+    - The final argument is the flags that influence the behaviour of the function. As the default behaviour is being used, this is set to 0
+
+ 4. If you set a breakpoint on the ws32_recv() call, send exploit, stack will show the above values
+ 
+ 5. If you step over the call (F8), you can then jump to the second argument value, and the entire exploit will be found there.
+ 
+ 5.1. Interestingly enough, if you don't add the "conn.recv(1024)" before sending the exploit code in the exploit, you won't see the exploit code in that second value. Might be worth explorinng this, but it's probably best practice to always add that. When in doubt, get rid of pwntools and just use the socket lib.
+
+6. Now that we understand how this works, we have to figure out how to start building this socket connection, starting with the file descriptor. THis is dynamic so you have to look for the last instruction before the recv() function that does anything to the stack, which in this case is moving $EBP - 420 into EAX. So if you take the current value of EBP, subtract 420, mark that value and allow execution of the exploit until the first nop sled is hit after sending "KSTET /.:/", if you jump to that value you get from EBP - 420, you can see that the file descriptor is stored there. 
+
+7. In order to get this value into our exploit code, you take that value you get from EBP - 420, and subtract it from the value of ESP when you're sitting inside the nop sled after the "KSTET /.:/" command, which in this case is 0x188
+
+8. In this case (and this might be dynamic depending on the application), the ESP value is too close to the memory addresses we are running our code from, so we need to adjust that. Best way to do that is just doing "sub esp, 0x64" which is 100 bytes
+
+9. So currently EAX is equal to our file descriptor, so now we can use EBX to store the value "0", for the flag value. Best way to do that is to xor ebx with itself and then push ebx
+
+10. Next value we need to push is the number of bytes (we will just use 1024 for this, since that's more than enough) which will be 0x400. Since EBX is already 0, we can just add 0x4 to the bh register to make it 400 and push ebx to the stack
+
+11. Next we need to we need to supply the address where we will store the data of the exploit, which we can do by just telling the recv() function to dump the data of our exploit ahead of where we are executing these staging commands. To do this, we take the address of 4th last byte of this buffer, and subtract ESP from it, in which we get 0x64 (100 bytes). We can use the EBX register again, and just do "push esp ; pop ebx; add ebx, 0x64 ; push ebx"
+
+12. Finally we just need to push the socket file descriptor that is currently stored in EAX. The recv() function expects an actual value, and not just the address that points to the value, the way to do that is "push dword ptr ds:[eax]" which pushes the actual value (58) onto the stack, which finalizes the stager. 
+
+13. Now the last thing to do is just call the recv() function. This is why you note the address that the call recv() instruction holds, but unfortunately it holds a null byte (00) which is no good. There is a nifty trick from rastating's blog that allows you to get around this. Instead of mov'ing "0x0040252c" into EAX, we will mov "0x40252c90" into EAX (which has shifted every byte to the left and then added 90 at the end) and use the "shr" instruction to move it back, which takes bits as an argument, so we will supply it "8" bits. To do this we do: "mov eax, 0x40252c90 ; shr eax, 8 ; call eax" 
+
